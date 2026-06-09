@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: nyayaflow-backend
+    runtime: python
+    buildCommand: apt-get install -y ffmpeg && pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: FLASK_PORT
+        value: 8000
+      - key: FLASK_DEBUG
+        value: false
+      - key: DEPLOY_MODE
+        value: production
