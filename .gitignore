@@ -1,0 +1,15 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/chroma_db/
+backend/instance/
+backend/nyayaflow.db
+backend/.env
+
+# Node
+frontend/node_modules/
+
+# OS
+.DS_Store
+*.log

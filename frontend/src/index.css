@@ -1,0 +1,93 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; margin: 0; padding: 0; }
+
+  /* ── Light mode (default) ── */
+  :root {
+    --bg:        #F8F9FC;
+    --surface:   #FFFFFF;
+    --raised:    #F1F5F9;
+    --border:    #E2E8F0;
+    --borderDark:#CBD5E1;
+    --text:      #1C2333;
+    --sub:       #475569;
+    --dim:       #94A3B8;
+    --muted:     #F1F5F9;
+    --blue:      #3B5BDB;
+    --blueDark:  #2D44A8;
+    --blueLight: #EEF2FF;
+    --blueMid:   #4263EB;
+    --amber:     #F59E0B;
+    --amberDark: #D97706;
+    --amberLight:#FFFBEB;
+    --green:     #10B981;
+    --greenLight:#ECFDF5;
+    --shadow:    rgba(59,91,219,0.06);
+  }
+
+  /* ── Dark mode ── */
+  [data-theme="dark"] {
+    --bg:        #0F1117;
+    --surface:   #1A1D27;
+    --raised:    #222536;
+    --border:    #2E3347;
+    --borderDark:#3D4460;
+    --text:      #E8ECF4;
+    --sub:       #A8B2CC;
+    --dim:       #6B7594;
+    --muted:     #1E2235;
+    --blue:      #5B7CF6;
+    --blueDark:  #4A69E8;
+    --blueLight: #1E2A4A;
+    --blueMid:   #6B8AF8;
+    --amber:     #F59E0B;
+    --amberDark: #D97706;
+    --amberLight:#2A1F05;
+    --green:     #34D399;
+    --greenLight:#0A2E1E;
+    --shadow:    rgba(0,0,0,0.3);
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: "Plus Jakarta Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  * { box-sizing: border-box; }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
+}
+
+.msg-in { animation: msgIn 0.22s cubic-bezier(0.16,1,0.3,1) both; }
+@keyframes msgIn {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.fade-up { animation: fadeUp 0.5s cubic-bezier(0.16,1,0.3,1) both; }
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(20px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+.fade-in { animation: fadeIn 0.4s ease both; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+.dot {
+  display:inline-block; width:5px; height:5px; border-radius:50%;
+  background: var(--blue);
+  animation: dotPop 1.4s ease-in-out infinite;
+}
+.dot:nth-child(2){animation-delay:.2s}
+.dot:nth-child(3){animation-delay:.4s}
+@keyframes dotPop {
+  0%,100%{opacity:.2;transform:scale(.7)}
+  50%{opacity:1;transform:scale(1.2)}
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin .7s linear infinite}
+@keyframes scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
