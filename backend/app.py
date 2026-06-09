@@ -31,7 +31,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/api/*": {"origins": [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://nyayaflow-five.vercel.app",
+    "https://*.vercel.app",
+]}})
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 app.config["SQLALCHEMY_DATABASE_URI"]        = "sqlite:///nyayaflow.db"
