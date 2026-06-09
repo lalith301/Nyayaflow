@@ -83,7 +83,12 @@ def embed_huggingface(texts: list[str]) -> list[list[float]]:
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     """Route to the right embedding function based on DEPLOY_MODE."""
     if DEPLOY_MODE == "production":
-        return embed_huggingface(texts)
+        # Try HuggingFace API first, fall back to local model
+        try:
+            return embed_huggingface(texts)
+        except Exception as e:
+            print(f"[ingest] HuggingFace API failed ({e}), falling back to local model...")
+            return embed_local(texts)
     return embed_local(texts)
 
 
