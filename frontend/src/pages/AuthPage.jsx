@@ -25,7 +25,7 @@ export default function AuthPage({ mode = 'login' }) {
       signIn(data.access_token, data.user)
       navigate('/chat')
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong. Try again.')
+      setError(err.response?.data?.error || '⏳ Server is waking up. Please wait 30 seconds and try again.')
     } finally { setLoading(false) }
   }
 

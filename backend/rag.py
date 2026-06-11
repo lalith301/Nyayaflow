@@ -85,12 +85,9 @@ def _embed_huggingface(text: str) -> list[float]:
 def get_query_embedding(query: str) -> list[float]:
     """Get embedding for a single query string."""
     if DEPLOY_MODE == "production":
-        try:
-            return _embed_huggingface(query)
-        except Exception as e:
-            print(f"[rag] HuggingFace API failed, using local model: {e}")
-            model = _get_local_embed_model()
-            return model.encode([query]).tolist()[0]
+        # In production, always use HuggingFace API - never load local model
+        # Local model download takes 2+ minutes on cold start
+        return _embed_huggingface(query)
     model = _get_local_embed_model()
     return model.encode([query]).tolist()[0]
 

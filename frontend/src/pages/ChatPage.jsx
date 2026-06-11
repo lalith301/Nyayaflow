@@ -133,7 +133,7 @@ export default function ChatPage() {
       clearTimeout(t)
       const errMsg = e.response?.status === 402
         ? `⚠️ ${e.response.data.error} You have ${e.response.data.tokens_have} tokens.`
-        : e.response?.data?.error || 'Could not reach server. Is Flask running on port 8000?'
+        : e.response?.data?.error || '⏳ Server is waking up (free tier). Please wait 60 seconds and try again.'
       setMessages(p=>[...p.filter(m=>m.id!==tid),{ id:Date.now()+2, role:'assistant', content:errMsg, sources:[], isError:true }])
     } finally { setLoading(false); inputRef.current?.focus() }
   }, [input, loading, updateTokens, refreshHistory])
