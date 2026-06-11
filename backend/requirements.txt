@@ -19,3 +19,4 @@ ddgs==9.2.0
 gunicorn==22.0.0
 
 psycopg2-binary==2.9.9
+httpcore==1.0.5
