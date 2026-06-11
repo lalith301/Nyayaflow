@@ -17,6 +17,20 @@ load_dotenv()
 # ─── Config ───────────────────────────────────────────────────────────────────
 
 DEPLOY_MODE     = os.getenv("DEPLOY_MODE", "local")
+
+# Pre-load embedding model at startup in production to avoid cold start delays
+# This runs once when the server starts, not on each request
+if DEPLOY_MODE == "production":
+    print("[rag] Pre-loading embedding model at startup...")
+    try:
+        from sentence_transformers import SentenceTransformer
+        _preloaded_model = SentenceTransformer(os.getenv("LOCAL_EMBED_MODEL", "BAAI/bge-small-en-v1.5"))
+        print("[rag] Embedding model loaded successfully.")
+    except Exception as e:
+        print(f"[rag] Model preload failed: {e}")
+        _preloaded_model = None
+else:
+    _preloaded_model = None
 COLLECTION_NAME = "legal_docs"
 GROQ_MODEL      = "llama-3.3-70b-versatile"
 TOP_K           = 6
@@ -53,9 +67,13 @@ STRICT RULES:
 
 @lru_cache(maxsize=1)
 def _get_local_embed_model():
+    global _preloaded_model
+    if _preloaded_model is not None:
+        return _preloaded_model
     from sentence_transformers import SentenceTransformer
     print("[rag] Loading local embedding model…")
-    return SentenceTransformer(LOCAL_EMBED_MODEL)
+    _preloaded_model = SentenceTransformer(LOCAL_EMBED_MODEL)
+    return _preloaded_model
 
 
 def _embed_huggingface(text: str) -> list[float]:
@@ -85,9 +103,10 @@ def _embed_huggingface(text: str) -> list[float]:
 def get_query_embedding(query: str) -> list[float]:
     """Get embedding for a single query string."""
     if DEPLOY_MODE == "production":
-        # In production, always use HuggingFace API - never load local model
-        # Local model download takes 2+ minutes on cold start
-        return _embed_huggingface(query)
+        try:
+            return _embed_huggingface(query)
+        except Exception as e:
+            print(f"[rag] HuggingFace API failed, using local model: {e}")
     model = _get_local_embed_model()
     return model.encode([query]).tolist()[0]
 
