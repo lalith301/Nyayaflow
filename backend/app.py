@@ -34,8 +34,14 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-app.config["SQLALCHEMY_DATABASE_URI"]        = os.getenv("DATABASE_URL", "sqlite:///nyayaflow.db")
+# Fix for Supabase pooler URLs with dots in username
+_db_url = os.getenv("DATABASE_URL", "sqlite:///nyayaflow.db")
+# SQLAlchemy requires postgresql+psycopg2:// not postgresql://
+if _db_url.startswith("postgresql://"):
+    _db_url = _db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+app.config["SQLALCHEMY_DATABASE_URI"]        = _db_url
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"]      = {"pool_pre_ping": True}
 app.config["JWT_SECRET_KEY"]                 = os.getenv("JWT_SECRET_KEY", "dev-secret-change-in-production")
 app.config["JWT_ACCESS_TOKEN_EXPIRES"]       = False   # tokens don't expire (simplest for demo)
 
