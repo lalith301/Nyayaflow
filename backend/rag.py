@@ -18,6 +18,12 @@ load_dotenv()
 
 DEPLOY_MODE     = os.getenv("DEPLOY_MODE", "local")
 
+# Use Render cache directory for model storage
+import os as _os
+_os.environ.setdefault("TRANSFORMERS_CACHE", "/opt/render/.cache/huggingface")
+_os.environ.setdefault("HF_HOME", "/opt/render/.cache/huggingface")
+_os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", "/opt/render/.cache/sentence_transformers")
+
 # Pre-load embedding model at startup in production to avoid cold start delays
 # This runs once when the server starts, not on each request
 if DEPLOY_MODE == "production":
