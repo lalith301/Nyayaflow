@@ -81,6 +81,21 @@ def _get_local_embed_model():
     _preloaded_model = SentenceTransformer(LOCAL_EMBED_MODEL)
     return _preloaded_model
 
+def _embed_cohere(text: str) -> list[float]:
+    """Embed using Cohere API - no model download needed, works on free tier."""
+    import requests
+    api_key = os.getenv("COHERE_API_KEY", "")
+    if not api_key:
+        raise ValueError("COHERE_API_KEY not set")
+    resp = requests.post(
+        "https://api.cohere.com/v1/embed",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"texts": [text], "model": "embed-multilingual-light-v3.0", "input_type": "search_query"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["embeddings"][0]
+
 
 def _embed_huggingface(text: str) -> list[float]:
     """Single query embedding via HuggingFace Inference API."""
@@ -106,13 +121,36 @@ def _embed_huggingface(text: str) -> list[float]:
     raise RuntimeError("HuggingFace embedding failed after 3 attempts")
 
 
+def _embed_cohere(text: str) -> list[float]:
+    """Single query embedding via Cohere API - no model download needed."""
+    import requests
+    COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
+    if not COHERE_API_KEY:
+        raise ValueError("COHERE_API_KEY not set")
+    resp = requests.post(
+        "https://api.cohere.com/v1/embed",
+        headers={"Authorization": f"Bearer {COHERE_API_KEY}", "Content-Type": "application/json"},
+        json={"texts": [text], "model": "embed-multilingual-light-v3.0", "input_type": "search_query"},
+        timeout=30
+    )
+    resp.raise_for_status()
+    return resp.json()["embeddings"][0]
+
+
 def get_query_embedding(query: str) -> list[float]:
     """Get embedding for a single query string."""
     if DEPLOY_MODE == "production":
+        # Try Cohere API first (no model download, works on Render free tier)
+        try:
+            return _embed_cohere(query)
+        except Exception as e:
+            print(f"[rag] Cohere API failed: {e}")
+        # Fallback to HuggingFace API
         try:
             return _embed_huggingface(query)
         except Exception as e:
-            print(f"[rag] HuggingFace API failed, using local model: {e}")
+            print(f"[rag] HuggingFace API failed: {e}")
+    # Local model fallback
     model = _get_local_embed_model()
     return model.encode([query]).tolist()[0]
 
