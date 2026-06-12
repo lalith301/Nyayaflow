@@ -18,25 +18,10 @@ load_dotenv()
 
 DEPLOY_MODE     = os.getenv("DEPLOY_MODE", "local")
 
-# Use Render cache directory for model storage
-import os as _os
-_os.environ.setdefault("TRANSFORMERS_CACHE", "/opt/render/.cache/huggingface")
-_os.environ.setdefault("HF_HOME", "/opt/render/.cache/huggingface")
-_os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", "/opt/render/.cache/sentence_transformers")
 
-# Pre-load embedding model at startup in production to avoid cold start delays
-# This runs once when the server starts, not on each request
-if DEPLOY_MODE == "production":
-    print("[rag] Pre-loading embedding model at startup...")
-    try:
-        from sentence_transformers import SentenceTransformer
-        _preloaded_model = SentenceTransformer(os.getenv("LOCAL_EMBED_MODEL", "BAAI/bge-small-en-v1.5"))
-        print("[rag] Embedding model loaded successfully.")
-    except Exception as e:
-        print(f"[rag] Model preload failed: {e}")
-        _preloaded_model = None
-else:
-    _preloaded_model = None
+
+# No preloading - use Cohere API in production
+_preloaded_model = None
 COLLECTION_NAME = "legal_docs"
 GROQ_MODEL      = "llama-3.3-70b-versatile"
 TOP_K           = 6
