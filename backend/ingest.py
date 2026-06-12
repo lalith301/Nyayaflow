@@ -80,11 +80,43 @@ def embed_huggingface(texts: list[str]) -> list[list[float]]:
     return all_embeddings
 
 
+def embed_cohere(texts: list[str]) -> list[list[float]]:
+    """Embed using Cohere API in batches of 96."""
+    api_key = os.getenv("COHERE_API_KEY", "")
+    if not api_key:
+        raise ValueError("COHERE_API_KEY not set")
+    import requests as req
+    all_embeddings = []
+    batch_size = 96
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i+batch_size]
+        for attempt in range(5):
+            resp = req.post(
+                "https://api.cohere.com/v1/embed",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"texts": batch, "model": "embed-multilingual-light-v3.0", "input_type": "search_document"},
+                timeout=60,
+            )
+            if resp.status_code == 429:
+                wait = 10 * (attempt + 1)
+                print(f"  [cohere] Rate limited, waiting {wait}s...")
+                import time; time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            break
+        all_embeddings.extend(resp.json()["embeddings"])
+        print(f"  [cohere] Embedded {min(i+batch_size, len(texts))}/{len(texts)} chunks")
+        import time; time.sleep(1)  # 1s delay between batches
+    return all_embeddings
+
+
 def get_embeddings(texts: list[str]) -> list[list[float]]:
     """Route to the right embedding function based on DEPLOY_MODE."""
     if DEPLOY_MODE == "production":
-        # Try HuggingFace API first, fall back to local model
-        # In production always use HuggingFace API
+        cohere_key = os.getenv("COHERE_API_KEY", "")
+        if cohere_key:
+            print("[ingest] Using Cohere API for embeddings")
+            return embed_cohere(texts)
         return embed_huggingface(texts)
     return embed_local(texts)
 
