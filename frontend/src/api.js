@@ -1,7 +1,10 @@
 // NyayaFlow API v2 - production build
 import axios from 'axios'
 
-const api = axios.create({ baseURL: `${import.meta.env.VITE_API_URL || ''}/api`, timeout: 60000 })
+const api = axios.create({ baseURL: `${import.meta.env.VITE_API_URL || ''}/api`, timeout: 180000 })
+
+// Separate instance for chat with longer timeout
+export const chatApi = axios.create({ baseURL: `${import.meta.env.VITE_API_URL || ''}/api`, timeout: 180000 })
 
 // Attach JWT token to every request
 api.interceptors.request.use(cfg => {
