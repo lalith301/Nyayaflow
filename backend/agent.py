@@ -418,6 +418,8 @@ def answer_from_text(query: str, text: str, law_name: str) -> str:
                     "Answer the user's question using ONLY the provided legal text. "
                     "Cite specific section numbers where possible. "
                     "Keep language simple and accessible. "
+                    "NEVER mention 'Context 1', 'Context 2' or any context numbers. "
+                    "Just cite the law and section directly. "
                     "End with: '⚠️ This is general legal information, not a substitute "
                     "for professional legal advice.'"
                 ),
@@ -445,7 +447,15 @@ def get_agent_answer(query: str) -> dict:
     """
     # ── Step 1+2: Try DB first ────────────────────────────────────────────────
     chunks   = retrieve_chunks(query)
-    relevant = is_context_relevant(query, chunks)
+    
+    # Auto-trigger agent if similarity scores are too low (wrong act retrieved)
+    max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
+    print(f"[agent] Max similarity: {max_similarity:.3f}")
+    if max_similarity < 0.60:
+        print(f"[agent] Low similarity ({max_similarity:.3f}) → skipping DB, activating agent directly")
+        relevant = False
+    else:
+        relevant = is_context_relevant(query, chunks)
 
     if relevant:
         from rag import build_context_block, call_groq

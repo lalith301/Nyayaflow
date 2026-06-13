@@ -51,6 +51,8 @@ STRICT RULES:
 5. When mentioning monetary penalties or time limits, be precise.
 6. End your response with: "⚠️ This is general legal information, not a substitute for
    professional legal advice."
+7. NEVER mention "Context 1", "Context 2", "Context 3" or any context numbers in your response.
+8. NEVER say "as mentioned in Context X" or "according to Context X". Just cite the law directly.
 """
 
 
@@ -106,20 +108,7 @@ def _embed_huggingface(text: str) -> list[float]:
     raise RuntimeError("HuggingFace embedding failed after 3 attempts")
 
 
-def _embed_cohere(text: str) -> list[float]:
-    """Single query embedding via Cohere API - no model download needed."""
-    import requests
-    COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
-    if not COHERE_API_KEY:
-        raise ValueError("COHERE_API_KEY not set")
-    resp = requests.post(
-        "https://api.cohere.com/v1/embed",
-        headers={"Authorization": f"Bearer {COHERE_API_KEY}", "Content-Type": "application/json"},
-        json={"texts": [text], "model": "embed-multilingual-light-v3.0", "input_type": "search_query"},
-        timeout=30
-    )
-    resp.raise_for_status()
-    return resp.json()["embeddings"][0]
+
 
 
 def get_query_embedding(query: str) -> list[float]:
@@ -238,8 +227,7 @@ def build_context_block(chunks: list[dict]) -> str:
     for i, chunk in enumerate(chunks, 1):
         source = os.path.basename(chunk["source"]) if chunk["source"] != "unknown" else "Legal Database"
         parts.append(
-            f"[Context {i} | Source: {source} | Page: {chunk['page']} | "
-            f"Relevance: {chunk['similarity']}]\n{chunk['text']}"
+            f"[Source: {source} | Page: {chunk['page']}]\n{chunk['text']}"
         )
     return "\n\n---\n\n".join(parts)
 
