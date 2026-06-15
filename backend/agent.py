@@ -19,6 +19,7 @@ import threading
 import requests
 from pathlib import Path
 from dotenv import load_dotenv
+from source_links import get_source_url, save_source_url
 
 load_dotenv()
 
@@ -463,7 +464,10 @@ def get_agent_answer(query: str) -> dict:
         answer = call_groq(query, build_context_block(chunks))
         return {
             "answer":      answer,
-            "sources":     [{"source": c["source"], "page": c["page"], "similarity": c["similarity"]} for c in chunks],
+            "sources":     [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in chunks
+            ],
             "query":       query,
             "used_agent":  False,
             "law_fetched": None,
@@ -484,7 +488,10 @@ def get_agent_answer(query: str) -> dict:
         answer = call_groq(query, build_context_block(targeted_chunks))
         return {
             "answer":      answer,
-            "sources":     [{"source": c["source"], "page": c["page"], "similarity": c["similarity"]} for c in targeted_chunks],
+            "sources":     [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in targeted_chunks
+            ],
             "query":       query,
             "used_agent":  False,
             "law_fetched": None,
@@ -497,7 +504,10 @@ def get_agent_answer(query: str) -> dict:
         from rag import build_context_block, call_groq
         return {
             "answer":      call_groq(query, build_context_block(chunks)),
-            "sources":     [{"source": c["source"], "page": c["page"], "similarity": c["similarity"]} for c in chunks],
+            "sources":     [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in chunks
+            ],
             "query":       query,
             "used_agent":  True,
             "law_fetched": None,
@@ -506,6 +516,9 @@ def get_agent_answer(query: str) -> dict:
 
     safe_name = re.sub(r"[^\w\s-]", "", law_name).strip().replace(" ", "_") + ".pdf"
     pdf_path_check = Path(PDF_SAVE_PATH) / safe_name
+
+    # Record this Act's official source URL for future citations
+    save_source_url(safe_name, pdf_url)
 
     # If already downloaded, skip download — just extract text
     if pdf_path_check.exists():
@@ -522,7 +535,10 @@ def get_agent_answer(query: str) -> dict:
         from rag import build_context_block, call_groq
         return {
             "answer":      call_groq(query, build_context_block(chunks)),
-            "sources":     [{"source": c["source"], "page": c["page"], "similarity": c["similarity"]} for c in chunks],
+            "sources":     [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in chunks
+            ],
             "query":       query,
             "used_agent":  True,
             "law_fetched": None,
@@ -545,7 +561,7 @@ def get_agent_answer(query: str) -> dict:
 
     return {
         "answer":      answer,
-        "sources":     [{"source": law_name, "page": "live", "similarity": 1.0}],
+        "sources":     [{"source": law_name, "page": "live", "similarity": 1.0, "url": pdf_url}],
         "query":       query,
         "used_agent":  True,
         "law_fetched": law_name,

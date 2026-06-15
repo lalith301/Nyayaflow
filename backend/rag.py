@@ -11,6 +11,7 @@ Exposes:
 import os
 from functools import lru_cache
 from dotenv import load_dotenv
+from source_links import get_source_url
 
 load_dotenv()
 
@@ -259,7 +260,12 @@ def get_rag_answer(query: str) -> dict:
     return {
         "answer":  answer,
         "sources": [
-            {"source": c["source"], "page": c["page"], "similarity": c["similarity"]}
+            {
+                "source":     c["source"],
+                "page":       c["page"],
+                "similarity": c["similarity"],
+                "url":        get_source_url(c["source"]),
+            }
             for c in chunks
         ],
         "query": query,

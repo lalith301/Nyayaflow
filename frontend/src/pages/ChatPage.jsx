@@ -3,6 +3,7 @@ import { Send, Scale, BookOpen, Globe, Zap, Plus, Clock, MessageSquare } from 'l
 import { sendChatMessage, getChatHistory } from '../api'
 import { useAuth } from '../context/AuthContext'
 import VoiceMicButton from '../components/VoiceMicButton'
+import { Send, Scale, BookOpen, Globe, Zap, Plus, Clock, MessageSquare, ExternalLink } from 'lucide-react'
 
 const SUGGESTIONS = [
   { text:"What are my rights if I receive a defective product?", tag:"Consumer", color:'#7C3AED' },
@@ -73,11 +74,15 @@ function Message({ msg }) {
         {msg.sources?.length > 0 && (
           <div style={{ marginTop:8,display:'flex',flexWrap:'wrap',gap:6 }}>
             {msg.sources.map((s,i)=>(
-              <div key={i} style={{ display:'inline-flex',alignItems:'center',gap:5,background:'var(--blueLight)',border:'1px solid rgba(59,91,219,0.2)',borderRadius:9999,padding:'3px 10px',fontSize:11,color:'var(--blue)',maxWidth:220 }}>
+              <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                style={{ display:'inline-flex',alignItems:'center',gap:5,background:'var(--blueLight)',border:'1px solid rgba(59,91,219,0.2)',borderRadius:9999,padding:'3px 10px',fontSize:11,color:'var(--blue)',maxWidth:240,textDecoration:'none',transition:'all .15s' }}
+                onMouseEnter={e=>{e.currentTarget.style.background='rgba(59,91,219,0.16)'}}
+                onMouseLeave={e=>{e.currentTarget.style.background='var(--blueLight)'}}>
                 <BookOpen size={9} style={{ flexShrink:0 }}/>
                 <span style={{ overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{cleanSrc(s.source)}</span>
                 {s.page!=='live'&&<span style={{ color:'var(--dim)',flexShrink:0 }}>·{s.page}</span>}
-              </div>
+                <ExternalLink size={9} style={{ flexShrink:0, opacity:0.55 }}/>
+              </a>
             ))}
           </div>
         )}
