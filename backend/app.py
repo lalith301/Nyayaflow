@@ -23,7 +23,7 @@ Protected endpoints (JWT required):
 import os
 import json
 import io
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response, stream_with_context
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, jwt_required, get_jwt_identity
 from dotenv import load_dotenv
@@ -155,7 +155,62 @@ def chat():
         print(f"[chat] Error: {e}")
         return jsonify({"error": "Internal server error. Token refunded."}), 500
 
+@app.route("/api/chat/stream", methods=["POST"])
+@jwt_required()
+def chat_stream():
+    user_id = int(get_jwt_identity())
+    data    = request.get_json(silent=True) or {}
+    query   = data.get("query", "").strip()
 
+    if not query:
+        return jsonify({"error": "Field 'query' is required."}), 400
+
+    ok, user = deduct_tokens(user_id, CHAT_COST)
+    if not ok:
+        return jsonify({
+            "error":         "Insufficient tokens. Please purchase more tokens to continue.",
+            "tokens_needed": CHAT_COST,
+            "tokens_have":   user.tokens if user else 0,
+        }), 402
+
+    def generate():
+        from agent import get_agent_answer_stream
+        full_answer = []
+        meta = {}
+        try:
+            for event in get_agent_answer_stream(query):
+                if event["type"] == "token":
+                    full_answer.append(event["content"])
+                elif event["type"] == "done":
+                    meta = event
+                yield f"data: {json.dumps(event)}\n\n"
+
+            answer_text = "".join(full_answer)
+
+            user_msg = ChatMessage(user_id=user_id, role="user", content=query, tokens_used=CHAT_COST)
+            ai_msg = ChatMessage(
+                user_id=user_id, role="assistant", content=answer_text,
+                sources=json.dumps(meta.get("sources", [])),
+                used_agent=meta.get("used_agent", False),
+                law_fetched=meta.get("law_fetched"),
+                tokens_used=0,
+            )
+            db.session.add_all([user_msg, ai_msg])
+            db.session.commit()
+
+            yield f"data: {json.dumps({'type': 'tokens_remaining', 'value': user.tokens})}\n\n"
+
+        except Exception as e:
+            print(f"[chat_stream] Error: {e}")
+            user.tokens += CHAT_COST
+            db.session.commit()
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Internal server error. Token refunded.'})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 # ─── /api/generate-doc ────────────────────────────────────────────────────────
 
 @app.route("/api/generate-doc", methods=["POST"])

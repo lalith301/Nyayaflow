@@ -74,3 +74,46 @@ export const verifyPayment = (payload) =>
 // History
 export const getChatHistory = (limit = 50) =>
   api.get(`/history?limit=${limit}`).then(r => r.data)
+
+// Streaming chat (SSE)
+export async function* streamChatMessage(query) {
+  const token = localStorage.getItem('nyaya_token')
+  const url = `${import.meta.env.VITE_API_URL || ''}/api/chat/stream`
+
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : '',
+    },
+    body: JSON.stringify({ query }),
+  })
+
+  if (!resp.ok) {
+    let errData = {}
+    try { errData = await resp.json() } catch {}
+    const err = new Error(errData.error || `Request failed with status ${resp.status}`)
+    err.status = resp.status
+    err.data = errData
+    throw err
+  }
+
+  const reader  = resp.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const parts = buffer.split('\n\n')
+    buffer = parts.pop()
+    for (const part of parts) {
+      const line = part.trim()
+      if (!line.startsWith('data:')) continue
+      const jsonStr = line.slice(5).trim()
+      if (!jsonStr) continue
+      try { yield JSON.parse(jsonStr) } catch {}
+    }
+  }
+}

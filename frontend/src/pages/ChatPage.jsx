@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { sendChatMessage, getChatHistory } from '../api'
+import { streamChatMessage, getChatHistory } from '../api'
 import { useAuth } from '../context/AuthContext'
 import VoiceMicButton from '../components/VoiceMicButton'
-import { Send, Scale, BookOpen, Globe, Zap, Plus, Clock, MessageSquare, ExternalLink } from 'lucide-react'
+import { Send, Scale, BookOpen, Globe, Zap, Plus, Clock, MessageSquare, ExternalLink, AlertTriangle } from 'lucide-react'
 
 const SUGGESTIONS = [
   { text:"What are my rights if I receive a defective product?", tag:"Consumer", color:'#7C3AED' },
@@ -39,19 +39,8 @@ function Message({ msg }) {
     </div>
   )
 
-  if (msg.role === 'typing') return (
-    <div className="msg-in" style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-      <div style={{ width:32,height:32,borderRadius:9,background:'linear-gradient(135deg,var(--blue),var(--blueMid))',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0 }}>
-        <Scale size={15} color="white"/>
-      </div>
-      <div style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:8 }}>
-        {msg.isAgent
-          ? <span style={{ fontSize:13,color:'var(--amber)',display:'flex',alignItems:'center',gap:6,fontWeight:500 }}><Globe size={12}/>Fetching from indiacode.nic.in…</span>
-          : <><span className="dot"/><span className="dot"/><span className="dot"/></>
-        }
-      </div>
-    </div>
-  )
+  const showStatus = msg.streaming && !msg.content && msg.statusMsg
+  const showBubble = !showStatus
 
   return (
     <div className="msg-in" style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
@@ -59,18 +48,39 @@ function Message({ msg }) {
         <Scale size={15} color="white"/>
       </div>
       <div style={{ flex:1, minWidth:0, maxWidth:'88%' }}>
-        {msg.usedAgent && msg.lawFetched
-          ? <div style={{ display:'inline-flex',alignItems:'center',gap:5,background:'var(--amberLight)',border:'1px solid rgba(245,158,11,0.4)',borderRadius:9999,padding:'3px 10px',marginBottom:8,fontSize:11,color:'var(--amberDark)',fontWeight:600 }}>
-              <Globe size={9}/>Fetched live · {msg.lawFetched} · saved
-            </div>
-          : <div style={{ display:'inline-flex',alignItems:'center',gap:5,background:'var(--greenLight)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:9999,padding:'3px 10px',marginBottom:8,fontSize:11,color:'var(--green)',fontWeight:600 }}>
-              <Zap size={9}/>From database
-            </div>
-        }
-        <div style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'4px 12px 12px 12px',padding:'14px 16px' }}>
-          <p style={{ fontSize:14,lineHeight:1.75,color:'var(--sub)',margin:0,whiteSpace:'pre-wrap' }}>{msg.content}</p>
-        </div>
-        {msg.sources?.length > 0 && (
+        {!msg.streaming && !msg.isError && (
+          msg.usedAgent && msg.lawFetched
+            ? <div style={{ display:'inline-flex',alignItems:'center',gap:5,background:'var(--amberLight)',border:'1px solid rgba(245,158,11,0.4)',borderRadius:9999,padding:'3px 10px',marginBottom:8,fontSize:11,color:'var(--amberDark)',fontWeight:600 }}>
+                <Globe size={9}/>Fetched live · {msg.lawFetched} · saved
+              </div>
+            : msg.usedAgent && !msg.lawFetched
+            ? <div style={{ display:'inline-flex',alignItems:'center',gap:5,background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:9999,padding:'3px 10px',marginBottom:8,fontSize:11,color:'#EF4444',fontWeight:600 }}>
+                <AlertTriangle size={9}/>Low confidence · could not verify source — consult an advocate
+              </div>
+            : <div style={{ display:'inline-flex',alignItems:'center',gap:5,background:'var(--greenLight)',border:'1px solid rgba(16,185,129,0.3)',borderRadius:9999,padding:'3px 10px',marginBottom:8,fontSize:11,color:'var(--green)',fontWeight:600 }}>
+                <Zap size={9}/>From database
+              </div>
+        )}
+
+        {showStatus && (
+          <div style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:10,padding:'12px 16px',display:'flex',alignItems:'center',gap:8 }}>
+            <span style={{ fontSize:13,color:'var(--amber)',display:'flex',alignItems:'center',gap:8,fontWeight:500 }}>
+              <span style={{ display:'flex',gap:3 }}><span className="dot"/><span className="dot"/><span className="dot"/></span>
+              {msg.statusMsg}
+            </span>
+          </div>
+        )}
+
+        {showBubble && (
+          <div style={{ background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'4px 12px 12px 12px',padding:'14px 16px' }}>
+            <p style={{ fontSize:14,lineHeight:1.75,color:'var(--sub)',margin:0,whiteSpace:'pre-wrap' }}>
+              {msg.content}
+              {msg.streaming && <span className="blink-cursor">▋</span>}
+            </p>
+          </div>
+        )}
+
+        {!msg.streaming && msg.sources?.length > 0 && (
           <div style={{ marginTop:8,display:'flex',flexWrap:'wrap',gap:6 }}>
             {msg.sources.map((s,i)=>(
               <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
@@ -120,25 +130,30 @@ export default function ChatPage() {
     if (!q||loading) return
     setInput(''); setLoading(true)
     setMessages(p=>[...p,{ id:Date.now(), role:'user', content:q }])
-    const tid = Date.now()+1
-    setMessages(p=>[...p,{ id:tid, role:'typing', isAgent:false }])
-    const t = setTimeout(()=>setMessages(p=>p.map(m=>m.id===tid?{...m,isAgent:true}:m)), 3000)
+
+    const aid = Date.now()+1
+    setMessages(p=>[...p,{ id:aid, role:'assistant', content:'', sources:[], streaming:true, statusMsg:'Checking legal database…' }])
+
     try {
-      const r = await sendChatMessage(q)
-      clearTimeout(t)
-      setMessages(p=>[...p.filter(m=>m.id!==tid),{
-        id:Date.now()+2, role:'assistant',
-        content:r.answer, sources:r.sources||[],
-        usedAgent:r.used_agent, lawFetched:r.law_fetched,
-      }])
-      if (r.tokens_remaining !== undefined) updateTokens(r.tokens_remaining)
+      for await (const event of streamChatMessage(q)) {
+        if (event.type === 'status') {
+          setMessages(p=>p.map(m=>m.id===aid?{...m, statusMsg:event.message}:m))
+        } else if (event.type === 'token') {
+          setMessages(p=>p.map(m=>m.id===aid?{...m, content:m.content+event.content, statusMsg:null}:m))
+        } else if (event.type === 'done') {
+          setMessages(p=>p.map(m=>m.id===aid?{...m, sources:event.sources||[], usedAgent:event.used_agent, lawFetched:event.law_fetched, streaming:false, statusMsg:null}:m))
+        } else if (event.type === 'tokens_remaining') {
+          updateTokens(event.value)
+        } else if (event.type === 'error') {
+          setMessages(p=>p.map(m=>m.id===aid?{...m, content:event.message, isError:true, streaming:false, statusMsg:null}:m))
+        }
+      }
       refreshHistory()
     } catch(e) {
-      clearTimeout(t)
-      const errMsg = e.response?.status === 402
-        ? `⚠️ ${e.response.data.error} You have ${e.response.data.tokens_have} tokens.`
-        : e.response?.data?.error || '⏳ Request timed out. The server may be processing a complex query. Please try again.'
-      setMessages(p=>[...p.filter(m=>m.id!==tid),{ id:Date.now()+2, role:'assistant', content:errMsg, sources:[], isError:true }])
+      const errMsg = e.status === 402
+        ? `⚠️ ${e.data?.error || 'Insufficient tokens.'} You have ${e.data?.tokens_have ?? 0} tokens.`
+        : e.message || '⏳ Connection error. Please try again.'
+      setMessages(p=>p.map(m=>m.id===aid?{...m, content:errMsg, isError:true, streaming:false, statusMsg:null}:m))
     } finally { setLoading(false); inputRef.current?.focus() }
   }, [input, loading, updateTokens, refreshHistory])
 
@@ -248,7 +263,11 @@ export default function ChatPage() {
           <p style={{ textAlign:'center',fontSize:11,color:'var(--dim)',marginTop:8 }}>AI-generated · Always verify with a qualified advocate</p>
         </div>
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      <style>{`
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes blink{50%{opacity:0}}
+        .blink-cursor{animation:blink 1s step-start infinite;color:var(--blue);font-weight:700}
+      `}</style>
     </div>
   )
 }

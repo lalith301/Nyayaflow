@@ -232,7 +232,24 @@ def build_context_block(chunks: list[dict]) -> str:
         )
     return "\n\n---\n\n".join(parts)
 
-
+def call_groq_stream(query: str, context_block: str):
+    """Yields answer tokens as they're generated."""
+    client = _get_groq_client()
+    stream = client.chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": f"LEGAL CONTEXT:\n{context_block}\n\nUSER QUESTION:\n{query}"},
+        ],
+        temperature=0.2,
+        max_tokens=1024,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
+            
 def call_groq(query: str, context_block: str) -> str:
     client = _get_groq_client()
     response = client.chat.completions.create(

@@ -533,7 +533,47 @@ def answer_from_text(query: str, text: str, law_name: str) -> str:
     )
     return response.choices[0].message.content
 
+def answer_from_text_stream(query: str, text: str, law_name: str):
+    """Streaming version of answer_from_text — yields tokens."""
+    truncated = find_relevant_sections(query, text)
 
+    stream = _groq().chat.completions.create(
+        model=GROQ_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are NyayaFlow, an expert Indian legal consultant. "
+                    "Answer the user's question using ONLY the provided legal text. "
+                    "Cite specific section numbers where possible. "
+                    "Keep language simple and accessible. "
+                    "If the provided text does not contain the specific section or "
+                    "information needed to answer the question, say so directly and "
+                    "recommend consulting a qualified advocate — do NOT supply the "
+                    "answer from your own general knowledge instead. "
+                    "NEVER mention 'Context 1', 'Context 2' or any context numbers. "
+                    "Just cite the law and section directly. "
+                    "End with: '⚠️ This is general legal information, not a substitute "
+                    "for professional legal advice.'"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"LAW: {law_name}\n\n"
+                    f"LEGAL TEXT:\n{truncated}\n\n"
+                    f"QUESTION: {query}"
+                ),
+            },
+        ],
+        temperature=0.2,
+        max_tokens=1024,
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            yield delta
 # ─── Main public interface ────────────────────────────────────────────────────
 
 def get_agent_answer(query: str) -> dict:
@@ -658,6 +698,122 @@ def get_agent_answer(query: str) -> dict:
         "sources":     [{"source": law_name, "page": "live", "similarity": 1.0, "url": pdf_url}],
         "query":       query,
         "used_agent":  True,
+        "law_fetched": law_name,
+    }
+
+def get_agent_answer_stream(query: str):
+    """
+    Streaming version of get_agent_answer. Yields dicts:
+      {"type": "status",  "message": "..."}
+      {"type": "token",   "content": "..."}
+      {"type": "done",    "sources": [...], "used_agent": bool, "law_fetched": str|None}
+    """
+    yield {"type": "status", "message": "Checking legal database…"}
+
+    chunks = retrieve_chunks(query)
+    max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
+    print(f"[agent-stream] Max similarity: {max_similarity:.3f}")
+
+    if max_similarity < 0.65:
+        relevant = False
+    else:
+        relevant = is_context_relevant(query, chunks)
+
+    if relevant:
+        from rag import build_context_block, call_groq_stream
+        for token in call_groq_stream(query, build_context_block(chunks)):
+            yield {"type": "token", "content": token}
+        yield {
+            "type": "done",
+            "sources": [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in chunks
+            ],
+            "used_agent": False,
+            "law_fetched": None,
+        }
+        return
+
+    # ── Agent path ──────────────────────────────────────────────────────────
+    yield {"type": "status", "message": "Identifying the relevant Act…"}
+    law_name = identify_relevant_law(query)
+
+    targeted_chunks = search_db_by_law(query, law_name)
+    if targeted_chunks:
+        from rag import build_context_block, call_groq_stream
+        yield {"type": "status", "message": f"Found relevant sections in {law_name}…"}
+        for token in call_groq_stream(query, build_context_block(targeted_chunks)):
+            yield {"type": "token", "content": token}
+        yield {
+            "type": "done",
+            "sources": [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in targeted_chunks
+            ],
+            "used_agent": False,
+            "law_fetched": None,
+        }
+        return
+
+    yield {"type": "status", "message": f"Searching indiacode.nic.in for {law_name}…"}
+    pdf_url = duckduckgo_search_pdf(law_name)
+
+    if not pdf_url:
+        from rag import build_context_block, call_groq_stream
+        yield {"type": "status", "message": "Could not find the Act online — answering from existing database…"}
+        for token in call_groq_stream(query, build_context_block(chunks)):
+            yield {"type": "token", "content": token}
+        yield {
+            "type": "done",
+            "sources": [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in chunks
+            ],
+            "used_agent": True,
+            "law_fetched": None,
+        }
+        return
+
+    safe_name = re.sub(r"[^\w\s-]", "", law_name).strip().replace(" ", "_") + ".pdf"
+    pdf_path_check = Path(PDF_SAVE_PATH) / safe_name
+    save_source_url(safe_name, pdf_url)
+
+    if pdf_path_check.exists():
+        from pypdf import PdfReader
+        reader = PdfReader(str(pdf_path_check))
+        pages  = [p.extract_text() for p in reader.pages if p.extract_text()]
+        pdf_text = "\n\n".join(pages) if pages else None
+    else:
+        yield {"type": "status", "message": f"Downloading {law_name}…"}
+        pdf_text = download_and_extract(pdf_url, safe_name, law_name)
+
+    if not pdf_text:
+        from rag import build_context_block, call_groq_stream
+        yield {"type": "status", "message": "Could not extract the Act — answering from existing database…"}
+        for token in call_groq_stream(query, build_context_block(chunks)):
+            yield {"type": "token", "content": token}
+        yield {
+            "type": "done",
+            "sources": [
+                {"source": c["source"], "page": c["page"], "similarity": c["similarity"], "url": get_source_url(c["source"])}
+                for c in chunks
+            ],
+            "used_agent": True,
+            "law_fetched": None,
+        }
+        return
+
+    yield {"type": "status", "message": f"Reading {law_name}…"}
+    for token in answer_from_text_stream(query, pdf_text, law_name):
+        yield {"type": "token", "content": token}
+
+    pdf_path = str(Path(PDF_SAVE_PATH) / safe_name)
+    threading.Thread(target=ingest_pdf_background, args=(pdf_path,), daemon=True).start()
+
+    yield {
+        "type": "done",
+        "sources": [{"source": law_name, "page": "live", "similarity": 1.0, "url": pdf_url}],
+        "used_agent": True,
         "law_fetched": law_name,
     }
 
