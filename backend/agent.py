@@ -226,9 +226,9 @@ def duckduckgo_search_pdf(law_name: str) -> str | None:
 
         queries = [
             f"{law_name} site:indiacode.nic.in",
-            f"{law_name} indiacode.nic.in pdf download",
+            f"{law_name} bare act site:indiacode.nic.in",
             f"{law_name} site:legislative.gov.in",
-            f"{law_name} india act pdf download official",
+            f"{law_name} bare act full text pdf site:prsindia.org",
         ]
 
         with DDGS() as ddgs:
@@ -300,9 +300,29 @@ def extract_pdf_from_page(page_url: str) -> str | None:
     return None
 
 
+def validate_extracted_text(text: str, law_name: str) -> bool:
+    """
+    Sanity-check that extracted PDF text actually relates to the requested Act —
+    prevents ingesting wrong/unrelated documents from low-quality mirror sites
+    (e.g. gazette notifications, unrelated Acts).
+    """
+    if len(text) < 5000:
+        print(f"[agent] Validation failed: only {len(text)} chars — too short for a full Act")
+        return False
+
+    text_lower = text.lower()
+    keywords = [w.lower() for w in law_name.split() if len(w) > 3 and not w.isdigit()]
+    matches  = [kw for kw in keywords if kw in text_lower]
+
+    if len(matches) < max(1, len(keywords) // 2):
+        print(f"[agent] Validation failed: only {matches} of {keywords} found in fetched text")
+        return False
+
+    return True
+
 # ─── Step 5: Download PDF + extract text ─────────────────────────────────────
 
-def download_and_extract(pdf_url: str, save_name: str) -> str | None:
+def download_and_extract(pdf_url: str, save_name: str, law_name: str = None) -> str | None:
     """Download PDF, save permanently, return extracted text."""
     try:
         resp = requests.get(
@@ -338,6 +358,12 @@ def download_and_extract(pdf_url: str, save_name: str) -> str | None:
 
         if len(full_text) < 500:
             print("[agent] Text too short — PDF may be scanned/image-based")
+            pdf_path.unlink(missing_ok=True)
+            return None
+
+        if law_name and not validate_extracted_text(full_text, law_name):
+            print(f"[agent] Downloaded PDF does not match '{law_name}' — discarding")
+            pdf_path.unlink(missing_ok=True)
             return None
 
         print(f"[agent] Extracted {len(full_text)} chars from {len(pages)} pages")
@@ -585,7 +611,7 @@ def get_agent_answer(query: str) -> dict:
         pages  = [p.extract_text() for p in reader.pages if p.extract_text()]
         pdf_text = "\n\n".join(pages) if pages else None
     else:
-        pdf_text = download_and_extract(pdf_url, safe_name)
+        pdf_text = download_and_extract(pdf_url, safe_name, law_name)
 
     if not pdf_text:
         print("[agent] Extraction failed → falling back to DB")
