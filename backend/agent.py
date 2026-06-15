@@ -402,12 +402,65 @@ def ingest_pdf_background(pdf_path: str):
     except Exception as e:
         print(f"[agent] Background ingestion failed: {e}")
 
+# ─── Step 6b: Targeted retrieval within freshly fetched text ────────────────
 
+def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 300) -> list[str]:
+    """Split text into overlapping chunks for relevance-based retrieval."""
+    chunks = []
+    start = 0
+    n = len(text)
+    while start < n:
+        end = min(start + chunk_size, n)
+        chunks.append(text[start:end])
+        if end == n:
+            break
+        start = end - overlap
+    return chunks
+
+
+def find_relevant_sections(query: str, text: str, top_k: int = 8, chunk_size: int = 2000) -> str:
+    """
+    Chunk the freshly fetched legal text and retrieve the chunks most relevant
+    to the query, instead of blindly using only the first N characters.
+    For long Acts (CrPC, Indian Succession Act, etc.) the relevant section is
+    often deep in the document — naive truncation misses it entirely.
+    """
+    chunks = chunk_text(text, chunk_size=chunk_size)
+
+    if len(chunks) <= top_k:
+        return text  # short document, no need to filter
+
+    print(f"[agent] Splitting fetched text into {len(chunks)} chunks for relevance search")
+
+    try:
+        import numpy as np
+        from rag import get_query_embedding
+        from ingest import get_embeddings
+
+        chunk_embeddings = np.array(get_embeddings(chunks))
+        query_embedding  = np.array(get_query_embedding(query))
+
+        norms = np.linalg.norm(chunk_embeddings, axis=1) * np.linalg.norm(query_embedding)
+        norms[norms == 0] = 1e-10
+        sims = chunk_embeddings @ query_embedding / norms
+
+        top_indices = np.argsort(sims)[::-1][:top_k]
+        top_indices = sorted(top_indices.tolist())  # preserve reading order
+
+        selected = [chunks[i] for i in top_indices]
+        print(f"[agent] Selected {len(selected)}/{len(chunks)} most relevant chunks "
+              f"(scores: {[round(float(sims[i]), 3) for i in top_indices]})")
+        return "\n\n[...]\n\n".join(selected)
+
+    except Exception as e:
+        print(f"[agent] Relevance chunking failed ({e}), falling back to larger truncation")
+        return text[:40000]
+    
 # ─── Step 7: Answer from scraped text ────────────────────────────────────────
 
 def answer_from_text(query: str, text: str, law_name: str) -> str:
     """Ask Groq to answer from freshly downloaded legal text."""
-    truncated = text[:12000]
+    truncated = find_relevant_sections(query, text)
 
     response = _groq().chat.completions.create(
         model=GROQ_MODEL,
@@ -419,6 +472,10 @@ def answer_from_text(query: str, text: str, law_name: str) -> str:
                     "Answer the user's question using ONLY the provided legal text. "
                     "Cite specific section numbers where possible. "
                     "Keep language simple and accessible. "
+                    "If the provided text does not contain the specific section or "
+                    "information needed to answer the question, say so directly and "
+                    "recommend consulting a qualified advocate — do NOT supply the "
+                    "answer from your own general knowledge instead. "
                     "NEVER mention 'Context 1', 'Context 2' or any context numbers. "
                     "Just cite the law and section directly. "
                     "End with: '⚠️ This is general legal information, not a substitute "
