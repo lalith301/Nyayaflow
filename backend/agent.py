@@ -339,6 +339,11 @@ def download_and_extract(pdf_url: str, save_name: str, law_name: str = None) -> 
             print("[agent] Downloaded file is not a PDF")
             return None
 
+        # Cap extremely large PDFs (e.g. Income Tax Act can be 10MB+, hundreds of pages)
+        MAX_PDF_BYTES = 8 * 1024 * 1024  # 8 MB
+        if len(resp.content) > MAX_PDF_BYTES:
+            print(f"[agent] PDF too large ({len(resp.content)//1024//1024}MB) — extracting first 200 pages only")
+
         # Save permanently
         pdf_path = Path(PDF_SAVE_PATH) / save_name
         pdf_path.parent.mkdir(parents=True, exist_ok=True)
@@ -348,8 +353,9 @@ def download_and_extract(pdf_url: str, save_name: str, law_name: str = None) -> 
         # Extract text
         from pypdf import PdfReader
         reader = PdfReader(str(pdf_path))
+        max_pages = 200 if len(resp.content) > MAX_PDF_BYTES else len(reader.pages)
         pages  = []
-        for page in reader.pages:
+        for page in reader.pages[:max_pages]:
             text = page.extract_text()
             if text and text.strip():
                 pages.append(text)
@@ -448,13 +454,18 @@ def find_relevant_sections(query: str, text: str, top_k: int = 8, chunk_size: in
     """
     Chunk the freshly fetched legal text and retrieve the chunks most relevant
     to the query, instead of blindly using only the first N characters.
-    For long Acts (CrPC, Indian Succession Act, etc.) the relevant section is
-    often deep in the document — naive truncation misses it entirely.
+    Caps total chunks processed to avoid timeouts on huge Acts (e.g. Income Tax Act).
     """
+    MAX_CHUNKS_TO_EMBED = 80  # caps embedding workload — ~160K chars max
+
     chunks = chunk_text(text, chunk_size=chunk_size)
 
     if len(chunks) <= top_k:
         return text  # short document, no need to filter
+
+    if len(chunks) > MAX_CHUNKS_TO_EMBED:
+        print(f"[agent] Document has {len(chunks)} chunks — capping to first {MAX_CHUNKS_TO_EMBED} for embedding")
+        chunks = chunks[:MAX_CHUNKS_TO_EMBED]
 
     print(f"[agent] Splitting fetched text into {len(chunks)} chunks for relevance search")
 
@@ -471,7 +482,7 @@ def find_relevant_sections(query: str, text: str, top_k: int = 8, chunk_size: in
         sims = chunk_embeddings @ query_embedding / norms
 
         top_indices = np.argsort(sims)[::-1][:top_k]
-        top_indices = sorted(top_indices.tolist())  # preserve reading order
+        top_indices = sorted(top_indices.tolist())
 
         selected = [chunks[i] for i in top_indices]
         print(f"[agent] Selected {len(selected)}/{len(chunks)} most relevant chunks "
