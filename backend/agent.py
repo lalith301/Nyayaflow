@@ -451,7 +451,7 @@ def get_agent_answer(query: str) -> dict:
     # Auto-trigger agent if similarity scores are too low (wrong act retrieved)
     max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
     print(f"[agent] Max similarity: {max_similarity:.3f}")
-    if max_similarity < 0.60:
+    if max_similarity < 0.65:
         print(f"[agent] Low similarity ({max_similarity:.3f}) → skipping DB, activating agent directly")
         relevant = False
     else:
