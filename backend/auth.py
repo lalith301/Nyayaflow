@@ -3,6 +3,7 @@ NyayaFlow - Auth & Token Routes
 
 POST /api/auth/register   → create account, get JWT + 100 free tokens
 POST /api/auth/login      → login, get JWT
+POST /api/auth/google     → login/register with Google, get JWT
 GET  /api/auth/me         → get current user info
 GET  /api/tokens/balance  → get token balance
 GET  /api/tokens/plans    → get available token packages
@@ -22,6 +23,8 @@ from flask_jwt_extended import (
 )
 import bcrypt
 import razorpay
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 from models import db, User, ChatMessage, Transaction
 
 auth_bp = Blueprint("auth", __name__)
@@ -29,6 +32,7 @@ auth_bp = Blueprint("auth", __name__)
 FREE_TOKENS     = int(os.getenv("FREE_TOKENS_ON_SIGNUP", 100))
 RAZORPAY_KEY_ID     = os.getenv("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+GOOGLE_CLIENT_ID    = os.getenv("GOOGLE_CLIENT_ID", "")
 
 # Token packages
 TOKEN_PLANS = [
@@ -93,6 +97,52 @@ def login():
     user = User.query.filter_by(email=email).first()
     if not user or not bcrypt.checkpw(pwd.encode(), user.password_hash.encode()):
         return jsonify({"error": "Invalid email or password."}), 401
+
+    token = create_access_token(identity=str(user.id))
+    return jsonify({
+        "access_token": token,
+        "user": user.to_dict(),
+    })
+
+
+# ─── Google OAuth ──────────────────────────────────────────────────────────────
+
+@auth_bp.route("/api/auth/google", methods=["POST"])
+def google_login():
+    """
+    Frontend sends the Google ID token (credential) obtained via
+    Google Identity Services. We verify it server-side, then
+    find-or-create the user and issue our normal JWT.
+    """
+    data       = request.get_json(silent=True) or {}
+    credential = data.get("credential", "")
+
+    if not credential:
+        return jsonify({"error": "Missing Google credential."}), 400
+
+    if not GOOGLE_CLIENT_ID:
+        return jsonify({"error": "Google sign-in is not configured on the server."}), 500
+
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            credential, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+    except ValueError:
+        return jsonify({"error": "Invalid Google token."}), 401
+
+    email = idinfo.get("email", "").strip().lower()
+    name  = idinfo.get("name", "") or email.split("@")[0]
+
+    if not email:
+        return jsonify({"error": "Google account has no email."}), 400
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        # Create account for new Google user with a random unusable password
+        random_pwd = bcrypt.hashpw(os.urandom(24), bcrypt.gensalt()).decode()
+        user = User(email=email, name=name, password_hash=random_pwd, tokens=FREE_TOKENS)
+        db.session.add(user)
+        db.session.commit()
 
     token = create_access_token(identity=str(user.id))
     return jsonify({

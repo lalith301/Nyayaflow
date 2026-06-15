@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Scale, Mail, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react'
-import { register, login } from '../api'
+import { register, login, googleAuth } from '../api'
 import { useAuth } from '../context/AuthContext'
+
+const GOOGLE_CLIENT_ID = '765228185010-8oi6pm23bcmrm21dclklc4e96f5f2e5p.apps.googleusercontent.com'
 
 export default function AuthPage({ mode = 'login' }) {
   const [isLogin,  setIsLogin]  = useState(mode === 'login')
@@ -15,6 +17,51 @@ export default function AuthPage({ mode = 'login' }) {
 
   const { signIn } = useAuth()
   const navigate   = useNavigate()
+  const googleBtnRef = useRef(null)
+
+  const handleGoogleResponse = async (response) => {
+    setError('')
+    setLoading(true)
+    try {
+      const data = await googleAuth(response.credential)
+      signIn(data.access_token, data.user)
+      navigate('/chat')
+    } catch (err) {
+      setError(err.response?.data?.error || 'Google sign-in failed. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+
+    const init = () => {
+      if (cancelled || !window.google || !googleBtnRef.current) return
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleResponse,
+      })
+      googleBtnRef.current.innerHTML = ''
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: 360,
+        text: 'continue_with',
+      })
+    }
+
+    if (window.google) {
+      init()
+    } else {
+      const script = document.querySelector('script[src*="accounts.google.com/gsi/client"]')
+      if (script) script.addEventListener('load', init)
+      const interval = setInterval(() => { if (window.google) { init(); clearInterval(interval) } }, 200)
+      return () => { cancelled = true; clearInterval(interval); if (script) script.removeEventListener('load', init) }
+    }
+
+    return () => { cancelled = true }
+  }, [])
 
   const handleSubmit = async () => {
     setError('')
@@ -104,6 +151,14 @@ export default function AuthPage({ mode = 'login' }) {
               : <>{isLogin?'Sign In':'Create Account'}<ArrowRight size={15}/></>
             }
           </button>
+
+          <div style={{ display:'flex',alignItems:'center',gap:10,margin:'18px 0' }}>
+            <div style={{ flex:1,height:1,background:'var(--border)' }}/>
+            <span style={{ fontSize:12,color:'var(--dim)',fontWeight:500 }}>OR</span>
+            <div style={{ flex:1,height:1,background:'var(--border)' }}/>
+          </div>
+
+          <div ref={googleBtnRef} style={{ display:'flex',justifyContent:'center' }}/>
 
           {!isLogin && (
             <p style={{ textAlign:'center',fontSize:12,color:'var(--dim)',marginTop:14 }}>
