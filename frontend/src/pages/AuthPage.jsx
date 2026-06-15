@@ -41,6 +41,8 @@ export default function AuthPage({ mode = 'login' }) {
       window.google.accounts.id.initialize({
         client_id: GOOGLE_CLIENT_ID,
         callback: handleGoogleResponse,
+        use_fedcm_for_prompt: true,
+        itp_support: true,
       })
       googleBtnRef.current.innerHTML = ''
       window.google.accounts.id.renderButton(googleBtnRef.current, {
