@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Scale, BookOpen, Globe, Zap, Plus, Clock, MessageSquare } from 'lucide-react'
 import { sendChatMessage, getChatHistory } from '../api'
 import { useAuth } from '../context/AuthContext'
 import VoiceMicButton from '../components/VoiceMicButton'
