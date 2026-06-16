@@ -385,7 +385,8 @@ def download_and_extract(pdf_url: str, save_name: str, law_name: str = None) -> 
 def ingest_pdf_background(pdf_path: str):
     """Chunk + embed + store into existing DB. Runs in background thread."""
     try:
-        from ingest import load_and_chunk, get_embeddings, DEPLOY_MODE
+        from ingest import load_and_chunk, get_embeddings
+        from rag import DEPLOY_MODE
         print(f"[agent] Background ingesting: {pdf_path}")
 
         chunks = load_and_chunk(pdf_path)
@@ -427,7 +428,6 @@ def ingest_pdf_background(pdf_path: str):
             )
 
         print(f"[agent] ✓ Ingested {len(chunks)} new chunks. DB now smarter.")
-        # Refresh collection cache so next query sees new chunks
         from rag import refresh_collection
         refresh_collection()
 
@@ -451,17 +451,12 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 300) -> list[st
 
 
 def find_relevant_sections(query: str, text: str, top_k: int = 8, chunk_size: int = 2000) -> str:
-    """
-    Chunk the freshly fetched legal text and retrieve the chunks most relevant
-    to the query, instead of blindly using only the first N characters.
-    Caps total chunks processed to avoid timeouts on huge Acts (e.g. Income Tax Act).
-    """
-    MAX_CHUNKS_TO_EMBED = 80  # caps embedding workload — ~160K chars max
+    MAX_CHUNKS_TO_EMBED = 80
 
     chunks = chunk_text(text, chunk_size=chunk_size)
 
     if len(chunks) <= top_k:
-        return text  # short document, no need to filter
+        return text
 
     if len(chunks) > MAX_CHUNKS_TO_EMBED:
         print(f"[agent] Document has {len(chunks)} chunks — capping to first {MAX_CHUNKS_TO_EMBED} for embedding")
@@ -471,11 +466,24 @@ def find_relevant_sections(query: str, text: str, top_k: int = 8, chunk_size: in
 
     try:
         import numpy as np
+        import time
         from rag import get_query_embedding
         from ingest import get_embeddings
 
-        chunk_embeddings = np.array(get_embeddings(chunks))
-        query_embedding  = np.array(get_query_embedding(query))
+        # Retry up to 3 times if Cohere is rate limited
+        for attempt in range(3):
+            try:
+                chunk_embeddings = np.array(get_embeddings(chunks))
+                break
+            except Exception as e:
+                if attempt < 2:
+                    wait = (attempt + 1) * 15
+                    print(f"[agent] Embedding attempt {attempt+1} failed ({e}), retrying in {wait}s...")
+                    time.sleep(wait)
+                else:
+                    raise
+
+        query_embedding = np.array(get_query_embedding(query))
 
         norms = np.linalg.norm(chunk_embeddings, axis=1) * np.linalg.norm(query_embedding)
         norms[norms == 0] = 1e-10
@@ -756,7 +764,11 @@ def get_agent_answer_stream(query: str):
         return
 
     yield {"type": "status", "message": f"Searching indiacode.nic.in for {law_name}…"}
-    pdf_url = duckduckgo_search_pdf(law_name)
+    try:
+        pdf_url = duckduckgo_search_pdf(law_name)
+    except Exception as e:
+        print(f"[agent-stream] DuckDuckGo failed: {e}")
+        pdf_url = None
 
     if not pdf_url:
         from rag import build_context_block, call_groq_stream
@@ -785,7 +797,11 @@ def get_agent_answer_stream(query: str):
         pdf_text = "\n\n".join(pages) if pages else None
     else:
         yield {"type": "status", "message": f"Downloading {law_name}…"}
-        pdf_text = download_and_extract(pdf_url, safe_name, law_name)
+        try:
+            pdf_text = download_and_extract(pdf_url, safe_name, law_name)
+        except Exception as e:
+            print(f"[agent-stream] Download failed: {e}")
+            pdf_text = None
 
     if not pdf_text:
         from rag import build_context_block, call_groq_stream
