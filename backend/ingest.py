@@ -82,7 +82,7 @@ def embed_huggingface(texts: list[str]) -> list[list[float]]:
 
 def embed_cohere(texts: list[str]) -> list[list[float]]:
     """Embed using Cohere API in batches of 96."""
-    api_key = os.getenv("COHERE_API_KEY", "")
+    api_key = os.getenv("COHERE_INGEST_API_KEY") or os.getenv("COHERE_API_KEY", "")
     if not api_key:
         raise ValueError("COHERE_API_KEY not set")
     import requests as req
@@ -106,7 +106,7 @@ def embed_cohere(texts: list[str]) -> list[list[float]]:
             break
         all_embeddings.extend(resp.json()["embeddings"])
         print(f"  [cohere] Embedded {min(i+batch_size, len(texts))}/{len(texts)} chunks")
-        import time; time.sleep(1)  # 1s delay between batches
+        import time; time.sleep(2)  # 2s between batches — leaves quota for live queries
     return all_embeddings
 
 
