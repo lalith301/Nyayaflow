@@ -129,11 +129,16 @@ export default function ChatPage() {
     const q = (text||input).trim()
     if (!q||loading) return
     setInput(''); setLoading(true)
-    setMessages(p=>[...p,{ id:Date.now(), role:'user', content:q }])
-
-    const aid = Date.now()+1
-    setMessages(p=>[...p,{ id:aid, role:'assistant', content:'', sources:[], streaming:true, statusMsg:'Checking legal database…' }])
-
+  
+    const uid = Date.now()
+    const aid = uid + 1
+  
+    setMessages(p=>[
+      ...p,
+      { id:uid, role:'user', content:q },
+      { id:aid, role:'assistant', content:'', sources:[], streaming:true, statusMsg:'Checking legal database…' }
+    ])
+  
     try {
       for await (const event of streamChatMessage(q)) {
         if (event.type === 'status') {
