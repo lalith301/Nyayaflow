@@ -247,8 +247,6 @@ def call_groq_stream(query: str, context_block: str):
     )
     for chunk in stream:
         delta = chunk.choices[0].delta.content
-        if delta is None:
-            delta = getattr(chunk.choices[0].delta, 'reasoning', None)
         if delta:
             yield delta
             

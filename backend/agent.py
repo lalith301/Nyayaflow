@@ -580,8 +580,6 @@ def answer_from_text_stream(query: str, text: str, law_name: str):
     )
     for chunk in stream:
         delta = chunk.choices[0].delta.content
-        if delta is None:
-            delta = getattr(chunk.choices[0].delta, 'reasoning', None)
         if delta:
             yield delta
 # ─── Main public interface ────────────────────────────────────────────────────
