@@ -24,7 +24,7 @@ DEPLOY_MODE     = os.getenv("DEPLOY_MODE", "local")
 # No preloading - use Cohere API in production
 _preloaded_model = None
 COLLECTION_NAME = "legal_docs"
-GROQ_MODEL      = "llama-3.3-70b-versatile"
+GROQ_MODEL      = "openai/gpt-oss-120b"
 TOP_K           = 6
 
 # Local

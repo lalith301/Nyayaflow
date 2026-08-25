@@ -23,7 +23,7 @@ from source_links import get_source_url, save_source_url
 
 load_dotenv()
 
-GROQ_MODEL    = "llama-3.3-70b-versatile"
+GROQ_MODEL    = "openai/gpt-oss-120b"
 PDF_SAVE_PATH = os.getenv("PDF_DATA_PATH", "./data/pdfs")
 
 
