@@ -23,7 +23,7 @@ from source_links import get_source_url, save_source_url
 
 load_dotenv()
 
-GROQ_MODEL    = "openai/gpt-oss-120b"
+GROQ_MODEL    = "groq/compound-mini"
 PDF_SAVE_PATH = os.getenv("PDF_DATA_PATH", "./data/pdfs")
 
 
@@ -165,7 +165,7 @@ def is_context_relevant(query: str, chunks: list[dict]) -> bool:
             },
             {
                 "role": "user",
-                "content": f"QUESTION: {query}\n\nCONTEXT:\n{context[:3000]}",
+                "content": f"QUESTION: {query}\n\nCONTEXT:\n{context[:1000]}",
             },
         ],
         max_tokens=3,
@@ -495,11 +495,11 @@ def find_relevant_sections(query: str, text: str, top_k: int = 8, chunk_size: in
         selected = [chunks[i] for i in top_indices]
         print(f"[agent] Selected {len(selected)}/{len(chunks)} most relevant chunks "
               f"(scores: {[round(float(sims[i]), 3) for i in top_indices]})")
-        return "\n\n[...]\n\n".join(selected)
+        return "\n\n[...]\n\n".join(selected)[:6000]
 
     except Exception as e:
         print(f"[agent] Relevance chunking failed ({e}), falling back to larger truncation")
-        return text[:40000]
+        return text[:6000]
     
 # ─── Step 7: Answer from scraped text ────────────────────────────────────────
 
@@ -580,6 +580,8 @@ def answer_from_text_stream(query: str, text: str, law_name: str):
     )
     for chunk in stream:
         delta = chunk.choices[0].delta.content
+        if delta is None:
+            delta = getattr(chunk.choices[0].delta, 'reasoning', None)
         if delta:
             yield delta
 # ─── Main public interface ────────────────────────────────────────────────────
@@ -594,7 +596,7 @@ def get_agent_answer(query: str) -> dict:
     # Auto-trigger agent if similarity scores are too low (wrong act retrieved)
     max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
     print(f"[agent] Max similarity: {max_similarity:.3f}")
-    if max_similarity < 0.65:
+    if max_similarity < 0.50:
         print(f"[agent] Low similarity ({max_similarity:.3f}) → skipping DB, activating agent directly")
         relevant = False
     else:
@@ -722,7 +724,7 @@ def get_agent_answer_stream(query: str):
     max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
     print(f"[agent-stream] Max similarity: {max_similarity:.3f}")
 
-    if max_similarity < 0.65:
+    if max_similarity < 0.50:
         relevant = False
     else:
         relevant = is_context_relevant(query, chunks)

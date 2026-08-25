@@ -24,7 +24,7 @@ DEPLOY_MODE     = os.getenv("DEPLOY_MODE", "local")
 # No preloading - use Cohere API in production
 _preloaded_model = None
 COLLECTION_NAME = "legal_docs"
-GROQ_MODEL      = "openai/gpt-oss-120b"
+GROQ_MODEL      = "groq/compound-mini"
 TOP_K           = 6
 
 # Local
@@ -247,6 +247,8 @@ def call_groq_stream(query: str, context_block: str):
     )
     for chunk in stream:
         delta = chunk.choices[0].delta.content
+        if delta is None:
+            delta = getattr(chunk.choices[0].delta, 'reasoning', None)
         if delta:
             yield delta
             
@@ -261,7 +263,9 @@ def call_groq(query: str, context_block: str) -> str:
         temperature=0.2,
         max_tokens=1024,
     )
-    return response.choices[0].message.content
+    msg = response.choices[0].message
+    result = msg.content or getattr(msg, 'reasoning', None) or ''
+    return result.strip()
 
 
 # ─── Public interface ─────────────────────────────────────────────────────────
