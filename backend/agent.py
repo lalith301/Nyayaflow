@@ -238,10 +238,12 @@ def duckduckgo_search_pdf(law_name: str) -> str | None:
                     results = list(ddgs.text(query, max_results=8))
                     for r in results:
                         url = r.get("href", "")
-                        if url.lower().endswith(".pdf"):
+                        if url.lower().endswith(".pdf") or ".pdf?" in url.lower():
+                            url = url.split("?")[0]  # strip query params
                             print(f"[agent] Found direct PDF: {url}")
                             return url
                         if "bitstream" in url and "indiacode" in url:
+                            url = url.split("?")[0]  # strip query params
                             print(f"[agent] Found bitstream: {url}")
                             return url
                         if "indiacode.nic.in/handle" in url:
@@ -594,7 +596,7 @@ def get_agent_answer(query: str) -> dict:
     # Auto-trigger agent if similarity scores are too low (wrong act retrieved)
     max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
     print(f"[agent] Max similarity: {max_similarity:.3f}")
-    if max_similarity < 0.50:
+    if max_similarity < 0.45:
         print(f"[agent] Low similarity ({max_similarity:.3f}) → skipping DB, activating agent directly")
         relevant = False
     else:
@@ -722,7 +724,7 @@ def get_agent_answer_stream(query: str):
     max_similarity = max((c.get("similarity", 0) for c in chunks), default=0)
     print(f"[agent-stream] Max similarity: {max_similarity:.3f}")
 
-    if max_similarity < 0.50:
+    if max_similarity < 0.45:
         relevant = False
     else:
         relevant = is_context_relevant(query, chunks)
